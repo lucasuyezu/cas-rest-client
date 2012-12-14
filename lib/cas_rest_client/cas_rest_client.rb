@@ -33,7 +33,7 @@ class CasRestClient
 
   private
   def execute(method, uri, params, options)
-    if @cas_opts[:use_cookies]
+    if @cas_opts[:use_cookies] and !@cookies.nil? and !@cookies.empty?
       begin
         execute_with_cookie(method, uri, params, options)
       rescue RestClient::Request::Unauthorized => e
@@ -45,8 +45,7 @@ class CasRestClient
   end
 
   def execute_with_cookie(method, uri, params, options)
-    return RestClient.send(method, uri, {:cookies => @cookies}.merge(options)) if params.empty?
-    RestClient.send(method, uri, params, {:cookies => @cookies}.merge(options))
+    restclient_send(method, uri, params, {:cookies => @cookies}.merge(options))
   end
 
   def execute_with_tgt(method, uri, params, options)
@@ -59,10 +58,20 @@ class CasRestClient
       get_tgt
       ticket = create_ticket(@tgt, :service => @cas_opts[:service] || uri)
     end
-    response = RestClient.send(method, "#{uri}#{uri.include?("?") ? "&" : "?"}ticket=#{ticket}", options) if params.empty?
-    response = RestClient.send(method, "#{uri}#{uri.include?("?") ? "&" : "?"}ticket=#{ticket}", params, options) unless params.empty?
+
+    response = execute_request(method, uri, ticket, params, options)
+
     @cookies = response.cookies
     response
+  end
+
+  def execute_request(method, uri, ticket, params, options)
+    if @cas_opts[:ticket_header]
+      options[@cas_opts[:ticket_header]] = ticket
+    else
+      uri = "#{uri}#{uri.include?("?") ? "&" : "?"}ticket=#{ticket}"
+    end
+    restclient_send(method, uri, params, options)
   end
 
   def create_ticket(uri, params)
@@ -92,6 +101,10 @@ class CasRestClient
     end
     cas_config
   end
+
+  def restclient_send(method, uri, params, options)
+    return RestClient.send(method, uri, options) unless method =~ /^post|patch|put$/i
+    RestClient.send(method, uri, params, options)
+  end
+
 end
-
-
